@@ -1,0 +1,5 @@
+# Alpinetime 0.2 board configuration
+
+config BOARD_ALPINETIME_0_2
+	bool "Alpinetime 0.2"
+	depends on SOC_NRF52832_QFAA

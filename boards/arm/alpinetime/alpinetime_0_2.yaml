@@ -1,0 +1,13 @@
+identifier: alpinetime_0_2
+name: Alpinetime 0.2
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+  - gnuarmemb
+  - xtools
+ram: 64
+flash: 512
+supported:
+  - kscan:touch
+vendor: oshw

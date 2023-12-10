@@ -1,0 +1,21 @@
+# Alpinetime 0.2 board configuration
+
+if BOARD_PINETIME_DEVKIT0
+
+config BOARD
+	default "alpinetime_0_2"
+
+config BT_CTLR
+	default BT
+
+config INPUT
+	default y if LVGL
+
+if FLASH
+
+config SPI_NOR_FLASH_LAYOUT_PAGE_SIZE
+	default 4096
+
+endif # FLASH
+
+endif # BOARD_PINETIME_DEVKIT0
