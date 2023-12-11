@@ -1,6 +1,7 @@
 
 /dts-v1/;
 #include <nordic/nrf52832_qfaa.dtsi>
+#include <dt-bindings/regulator/npm1300.h>
 #include "alpinetime_0_2-pinctrl.dtsi"
 
 / {
@@ -55,6 +56,56 @@
 	pinctrl-0 = <&i2c0_default>;
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
+
+	npm1300_pmic: pmic@6b {
+		compatible = "nordic,npm1300";
+		reg = <0x6b>;
+
+		npm1300_regulators: regulators {
+			compatible = "nordic,npm1300-regulator";
+
+			/* limits are set to min/max allowed values */
+			npm1300_buck1: BUCK1 {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-init-microvolt = <1800000>;
+				regulator-always-on;
+			};
+
+			npm1300_buck2: BUCK2 {
+				regulator-min-microvolt = <1000000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-init-microvolt = <2800000>;
+				retention-microvolt = <2500000>;
+			};
+
+			npm1300_ldo1: LDO1 {
+				regulator-min-microvolt = <0000000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-init-microvolt = <3000000>;
+				regulator-initial-mode = <NPM1300_LDSW_MODE_LDO>;
+			};
+
+			npm1300_ldo2: LDO2 {
+				regulator-min-microvolt = <0000000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-init-microvolt = <3300000>;
+				regulator-initial-mode = <NPM1300_LDSW_MODE_LDO>;
+			};
+		};
+
+		npm1300_charger: charger {
+			compatible = "nordic,npm1300-charger";
+			term-microvolt = <4150000>;
+			term-warm-microvolt = <4000000>;
+			current-microamp = <150000>;
+			dischg-limit-microamp = <1000000>;
+			vbus-limit-microamp = <500000>;
+			thermistor-ohms = <10000>;
+			thermistor-beta = <3380>;
+			charging-enable;
+		};
+	};
 };
 
 &flash0 {
