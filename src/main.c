@@ -1,357 +1,99 @@
 /*
- * Copyright (c) 2016 Intel Corporation
+ * Copyright (c) 2016 Open-RnD Sp. z o.o.
+ * Copyright (c) 2020 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <stdlib.h>
-
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/regulator.h>
-#include <zephyr/drivers/sensor.h>
-#include <zephyr/drivers/sensor/npm1300_charger.h>
-#include <zephyr/drivers/led.h>
-#include <zephyr/dt-bindings/regulator/npm1300.h>
-#include <zephyr/drivers/mfd/npm1300.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/sys/printk.h>
-#include <getopt.h>
+#include <inttypes.h>
 
-#include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(sample, LOG_LEVEL_INF);
-
-#include <zephyr/kernel.h>
-#include <zephyr/device.h>
-#include <zephyr/drivers/display.h>
-
-#ifdef CONFIG_ARCH_POSIX
-#include "posix_board_if.h"
-#endif
-
-/* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS   1000
-
-/* The devicetree node identifier for the "led0" alias. */
-#define LED0_NODE DT_ALIAS(led0)
-
-enum corner {
-	TOP_LEFT,
-	TOP_RIGHT,
-	BOTTOM_RIGHT,
-	BOTTOM_LEFT
-};
-
-typedef void (*fill_buffer)(enum corner corner, uint8_t grey, uint8_t *buf,
-			    size_t buf_size);
-
-
-#ifdef CONFIG_ARCH_POSIX
-static void posix_exit_main(int exit_code)
-{
-#if CONFIG_TEST
-	if (exit_code == 0) {
-		LOG_INF("PROJECT EXECUTION SUCCESSFUL");
-	} else {
-		LOG_INF("PROJECT EXECUTION FAILED");
-	}
-#endif
-	posix_exit(exit_code);
-}
-#endif
-
-static void fill_buffer_argb8888(enum corner corner, uint8_t grey, uint8_t *buf,
-				 size_t buf_size)
-{
-	uint32_t color = 0;
-
-	switch (corner) {
-	case TOP_LEFT:
-		color = 0x00FF0000u;
-		break;
-	case TOP_RIGHT:
-		color = 0x0000FF00u;
-		break;
-	case BOTTOM_RIGHT:
-		color = 0x000000FFu;
-		break;
-	case BOTTOM_LEFT:
-		color = grey << 16 | grey << 8 | grey;
-		break;
-	}
-
-	for (size_t idx = 0; idx < buf_size; idx += 4) {
-		*((uint32_t *)(buf + idx)) = color;
-	}
-}
-
-static void fill_buffer_rgb888(enum corner corner, uint8_t grey, uint8_t *buf,
-			       size_t buf_size)
-{
-	uint32_t color = 0;
-
-	switch (corner) {
-	case TOP_LEFT:
-		color = 0x00FF0000u;
-		break;
-	case TOP_RIGHT:
-		color = 0x0000FF00u;
-		break;
-	case BOTTOM_RIGHT:
-		color = 0x000000FFu;
-		break;
-	case BOTTOM_LEFT:
-		color = grey << 16 | grey << 8 | grey;
-		break;
-	}
-
-	for (size_t idx = 0; idx < buf_size; idx += 3) {
-		*(buf + idx + 0) = color >> 16;
-		*(buf + idx + 1) = color >> 8;
-		*(buf + idx + 2) = color >> 0;
-	}
-}
-
-static uint16_t get_rgb565_color(enum corner corner, uint8_t grey)
-{
-	uint16_t color = 0;
-	uint16_t grey_5bit;
-
-	switch (corner) {
-	case TOP_LEFT:
-		color = 0xF800u;
-		break;
-	case TOP_RIGHT:
-		color = 0x07E0u;
-		break;
-	case BOTTOM_RIGHT:
-		color = 0x001Fu;
-		break;
-	case BOTTOM_LEFT:
-		grey_5bit = grey & 0x1Fu;
-		/* shift the green an extra bit, it has 6 bits */
-		color = grey_5bit << 11 | grey_5bit << (5 + 1) | grey_5bit;
-		break;
-	}
-	return color;
-}
-
-static void fill_buffer_rgb565(enum corner corner, uint8_t grey, uint8_t *buf,
-			       size_t buf_size)
-{
-	uint16_t color = get_rgb565_color(corner, grey);
-
-	for (size_t idx = 0; idx < buf_size; idx += 2) {
-		*(buf + idx + 0) = (color >> 8) & 0xFFu;
-		*(buf + idx + 1) = (color >> 0) & 0xFFu;
-	}
-}
-
-static void fill_buffer_bgr565(enum corner corner, uint8_t grey, uint8_t *buf,
-			       size_t buf_size)
-{
-	uint16_t color = get_rgb565_color(corner, grey);
-
-	for (size_t idx = 0; idx < buf_size; idx += 2) {
-		*(uint16_t *)(buf + idx) = color;
-	}
-}
-
-static void fill_buffer_mono(enum corner corner, uint8_t grey, uint8_t *buf,
-			     size_t buf_size)
-{
-	uint16_t color;
-
-	switch (corner) {
-	case BOTTOM_LEFT:
-		color = (grey & 0x01u) ? 0xFFu : 0x00u;
-		break;
-	default:
-		color = 0;
-		break;
-	}
-
-	memset(buf, color, buf_size);
-}
+#define SLEEP_TIME_MS	1
 
 /*
- * A build error on this line means your board is unsupported.
- * See the sample documentation for information on how to fix this.
+ * Get button configuration from the devicetree sw0 alias. This is mandatory.
  */
-static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
-static const struct device *ldo1 = DEVICE_DT_GET(DT_NODELABEL(npm1300_ldo1));
+#define SW0_NODE	DT_ALIAS(sw0)
+#if !DT_NODE_HAS_STATUS(SW0_NODE, okay)
+#error "Unsupported board: sw0 devicetree alias is not defined"
+#endif
+static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET_OR(SW0_NODE, gpios,
+							      {0});
+static struct gpio_callback button_cb_data;
+
+/*
+ * The led0 devicetree alias is optional. If present, we'll use it
+ * to turn on the LED whenever the button is pressed.
+ */
+static struct gpio_dt_spec led = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led0), gpios,
+						     {0});
+
+void button_pressed(const struct device *dev, struct gpio_callback *cb,
+		    uint32_t pins)
+{
+	printk("Button pressed at %" PRIu32 "\n", k_cycle_get_32());
+}
 
 int main(void)
 {
 	int ret;
 
-	if (!gpio_is_ready_dt(&led)) {
+	if (!gpio_is_ready_dt(&button)) {
+		printk("Error: button device %s is not ready\n",
+		       button.port->name);
 		return 0;
 	}
 
-	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-
-	if (ret < 0) {
+	ret = gpio_pin_configure_dt(&button, GPIO_INPUT);
+	if (ret != 0) {
+		printk("Error %d: failed to configure %s pin %d\n",
+		       ret, button.port->name, button.pin);
 		return 0;
 	}
 
-	if (!device_is_ready(ldo1)) {
-		printk("Error: Regulator device is not ready\n");
+	ret = gpio_pin_interrupt_configure_dt(&button,
+					      GPIO_INT_EDGE_TO_ACTIVE);
+	if (ret != 0) {
+		printk("Error %d: failed to configure interrupt on %s pin %d\n",
+			ret, button.port->name, button.pin);
 		return 0;
 	}
 
-	regulator_set_voltage(ldo1, 3000000, 3000000);
-	regulator_enable(ldo1);
+	gpio_init_callback(&button_cb_data, button_pressed, BIT(button.pin));
+	gpio_add_callback(button.port, &button_cb_data);
+	printk("Set up button at %s pin %d\n", button.port->name, button.pin);
 
-	size_t x;
-	size_t y;
-	size_t rect_w;
-	size_t rect_h;
-	size_t h_step;
-	size_t scale;
-	size_t grey_count;
-	uint8_t *buf;
-	int32_t grey_scale_sleep;
-	const struct device *display_dev;
-	struct display_capabilities capabilities;
-	struct display_buffer_descriptor buf_desc;
-	size_t buf_size = 0;
-	fill_buffer fill_buffer_fnc = NULL;
-
-	display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-	if (!device_is_ready(display_dev)) {
-		LOG_ERR("Device %s not found. Aborting sample.",
-			display_dev->name);
-#ifdef CONFIG_ARCH_POSIX
-		posix_exit_main(1);
-#else
-		return 0;
-#endif
+	if (led.port && !gpio_is_ready_dt(&led)) {
+		printk("Error %d: LED device %s is not ready; ignoring it\n",
+		       ret, led.port->name);
+		led.port = NULL;
 	}
-
-	LOG_INF("Display sample for %s", display_dev->name);
-	display_get_capabilities(display_dev, &capabilities);
-
-	if (capabilities.screen_info & SCREEN_INFO_MONO_VTILED) {
-		rect_w = 16;
-		rect_h = 8;
-	} else {
-		rect_w = 2;
-		rect_h = 1;
-	}
-
-	h_step = rect_h;
-	scale = (capabilities.x_resolution / 8) / rect_h;
-
-	rect_w *= scale;
-	rect_h *= scale;
-
-	if (capabilities.screen_info & SCREEN_INFO_EPD) {
-		grey_scale_sleep = 10000;
-	} else {
-		grey_scale_sleep = 100;
-	}
-
-	buf_size = rect_w * rect_h;
-
-	if (buf_size < (capabilities.x_resolution * h_step)) {
-		buf_size = capabilities.x_resolution * h_step;
-	}
-
-	switch (capabilities.current_pixel_format) {
-	case PIXEL_FORMAT_ARGB_8888:
-		fill_buffer_fnc = fill_buffer_argb8888;
-		buf_size *= 4;
-		break;
-	case PIXEL_FORMAT_RGB_888:
-		fill_buffer_fnc = fill_buffer_rgb888;
-		buf_size *= 3;
-		break;
-	case PIXEL_FORMAT_RGB_565:
-		fill_buffer_fnc = fill_buffer_rgb565;
-		buf_size *= 2;
-		break;
-	case PIXEL_FORMAT_BGR_565:
-		fill_buffer_fnc = fill_buffer_bgr565;
-		buf_size *= 2;
-		break;
-	case PIXEL_FORMAT_MONO01:
-	case PIXEL_FORMAT_MONO10:
-		fill_buffer_fnc = fill_buffer_mono;
-		buf_size /= 8;
-		break;
-	default:
-		LOG_ERR("Unsupported pixel format. Aborting sample.");
-#ifdef CONFIG_ARCH_POSIX
-		posix_exit_main(1);
-#else
-		return 0;
-#endif
-	}
-
-	buf = k_malloc(buf_size);
-
-	if (buf == NULL) {
-		LOG_ERR("Could not allocate memory. Aborting sample.");
-#ifdef CONFIG_ARCH_POSIX
-		posix_exit_main(1);
-#else
-		return 0;
-#endif
-	}
-
-	(void)memset(buf, 0xFFu, buf_size);
-
-	buf_desc.buf_size = buf_size;
-	buf_desc.pitch = capabilities.x_resolution;
-	buf_desc.width = capabilities.x_resolution;
-	buf_desc.height = h_step;
-
-	for (int idx = 0; idx < capabilities.y_resolution; idx += h_step) {
-		display_write(display_dev, 0, idx, &buf_desc, buf);
-	}
-
-	buf_desc.pitch = rect_w;
-	buf_desc.width = rect_w;
-	buf_desc.height = rect_h;
-
-	fill_buffer_fnc(TOP_LEFT, 0, buf, buf_size);
-	x = 0;
-	y = 0;
-	display_write(display_dev, x, y, &buf_desc, buf);
-
-	fill_buffer_fnc(TOP_RIGHT, 0, buf, buf_size);
-	x = capabilities.x_resolution - rect_w;
-	y = 0;
-	display_write(display_dev, x, y, &buf_desc, buf);
-
-	fill_buffer_fnc(BOTTOM_RIGHT, 0, buf, buf_size);
-	x = capabilities.x_resolution - rect_w;
-	y = capabilities.y_resolution - rect_h;
-	display_write(display_dev, x, y, &buf_desc, buf);
-
-	display_blanking_off(display_dev);
-
-	grey_count = 0;
-	x = 0;
-	y = capabilities.y_resolution - rect_h;
-
-	while (1) {
-		ret = gpio_pin_toggle_dt(&led);
-		fill_buffer_fnc(BOTTOM_LEFT, grey_count, buf, buf_size);
-		display_write(display_dev, x, y, &buf_desc, buf);
-		++grey_count;
-		k_msleep(grey_scale_sleep);
-#if CONFIG_TEST
-		if (grey_count >= 1024) {
-			break;
+	if (led.port) {
+		ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT);
+		if (ret != 0) {
+			printk("Error %d: failed to configure LED device %s pin %d\n",
+			       ret, led.port->name, led.pin);
+			led.port = NULL;
+		} else {
+			printk("Set up LED at %s pin %d\n", led.port->name, led.pin);
 		}
-#endif
-	// k_msleep(SLEEP_TIME_MS);
 	}
 
-#ifdef CONFIG_ARCH_POSIX
-	posix_exit_main(0);
-#endif
+	printk("Press the button\n");
+	if (led.port) {
+		while (1) {
+			/* If we have an LED, match its state to the button's. */
+			int val = gpio_pin_get_dt(&button);
+
+			if (val >= 0) {
+				gpio_pin_set_dt(&led, val);
+			}
+			k_msleep(SLEEP_TIME_MS);
+		}
+	}
 	return 0;
 }
