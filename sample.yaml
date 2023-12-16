@@ -1,12 +1,19 @@
 sample:
-  name: Blinky Sample
+  description: LVGL sample, containing all upstream demos
+  name: LVGL demos
+common:
+  modules:
+    - lvgl
+  harness: none
+  filter: dt_chosen_enabled("zephyr,display")
+  tags: samples lvgl display gui
 tests:
-  sample.basic.blinky:
-    tags:
-      - LED
-      - gpio
-    filter: dt_enabled_alias_with_parent_compat("led0", "gpio-leds")
-    depends_on: gpio
-    harness: led
-    integration_platforms:
-      - frdm_k64f
+  sample.modules.lvgl.demo_music:
+    extra_configs:
+      - CONFIG_LV_Z_DEMO_MUSIC=y
+  sample.modules.lvgl.demo_benchmark:
+    extra_configs:
+      - CONFIG_LV_Z_DEMO_BENCHMARK=y
+  sample.modules.lvgl.demo_stress:
+    extra_configs:
+      - CONFIG_LV_Z_DEMO_STRESS=y
