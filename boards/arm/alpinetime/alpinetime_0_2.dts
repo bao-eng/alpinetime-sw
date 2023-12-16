@@ -3,6 +3,7 @@
 #include <nordic/nrf52832_qfaa.dtsi>
 #include <dt-bindings/regulator/npm1300.h>
 #include "alpinetime_0_2-pinctrl.dtsi"
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
 	model = "Alpinetime 0.2";
@@ -32,6 +33,23 @@
 			label = "LED";
 		};
 	};
+
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+			gpios = <&gpio0 12 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Push Button 1";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	aliases {
+		led0 = &led0;
+		sw0 = &button0;
+		bootloader-led0 = &led0;
+		mcuboot-button0 = &button0;
+		mcuboot-led0 = &led0;
+	};
 };
 
 &gpiote {
@@ -54,6 +72,7 @@
 &i2c0 {
 	compatible = "nordic,nrf-twim";
 	status = "okay";
+	clock-frequency = <I2C_BITRATE_FAST>; /* 400KHz */
 	pinctrl-0 = <&i2c0_default>;
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
@@ -106,6 +125,13 @@
 			thermistor-beta = <3380>;
 			charging-enable;
 		};
+	};
+
+	cst816s: cst816s@15 {
+		compatible = "hynitron,cst816s";
+		reg = <0x15>;
+		irq-gpios = <&gpio0 31 GPIO_ACTIVE_LOW>;
+		rst-gpios = <&gpio0 10 GPIO_ACTIVE_LOW>;
 	};
 };
 
