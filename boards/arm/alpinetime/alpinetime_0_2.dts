@@ -3,6 +3,7 @@
 #include <nordic/nrf52832_qfaa.dtsi>
 #include <dt-bindings/regulator/npm1300.h>
 #include "alpinetime_0_2-pinctrl.dtsi"
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
 	model = "Alpinetime 0.2";
@@ -19,18 +20,29 @@
 		zephyr,display = &st7789v;
 	};
 
-	/* These aliases are provided for compatibility with samples */
-	aliases {
-		led0 = &led0;
-		watchdog0 = &wdt0;
-	};
-
 	leds {
 		compatible = "gpio-leds";
 		led0: led_0 {
 			gpios = <&gpio0 29 0>;
 			label = "LED";
 		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+			gpios = <&gpio0 12 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Push Button 1";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	aliases {
+		led0 = &led0;
+		sw0 = &button0;
+		bootloader-led0 = &led0;
+		mcuboot-button0 = &button0;
+		mcuboot-led0 = &led0;
 	};
 };
 
